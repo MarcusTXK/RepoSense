@@ -730,10 +730,13 @@ export default {
     async copyShortenedUrl() {
       try {
         // Note: this is just for a proof of concept, for actual production env variables should be used
-        const CUTTLY_URL = 'https://cutt.ly/api/api.php?';
+        const CUTTLY_URL = '/api/api.php?';
         const ENV_KEY = 'e9fd41863dc35a270f1c3b8595151e40831c3';
+        const HTTP = 'http://';
         axios.get(CUTTLY_URL, {
-          params: { key: ENV_KEY, short: window.location.href },
+          // A temporary workaround since without 'www', cutt.ly does not recognise this as a valid URL
+          params: { key: ENV_KEY, short: `${HTTP}www.${window.location.href.substring(HTTP.length)}` },
+          withCredentials: false,
         })
             .then(async (response) => {
               if (response.data) {

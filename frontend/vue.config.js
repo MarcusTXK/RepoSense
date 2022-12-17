@@ -1,6 +1,9 @@
 const StyleLintPlugin = require("stylelint-webpack-plugin");
 
 module.exports = {
+  devServer: {
+    proxy: "https://cutt.ly/",
+  },
   pages: {
     index: {
       entry: "src/main.ts",
@@ -15,9 +18,6 @@ module.exports = {
         files: ["src/**/*.{vue,scss}"],
       }),
     ],
-  },
-  devServer: {
-    proxy: "https://cutt.ly/api/",
   },
   chainWebpack: (config) => {
     // Pug Loader
