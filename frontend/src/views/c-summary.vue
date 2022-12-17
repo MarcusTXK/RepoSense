@@ -73,6 +73,8 @@
             v-bind:disabled="filterGroupSelection === 'groupByNone'"
           )
           span merge all groups
+      .mui-btn
+        button(v-on:click="copyShortenedUrl") Copy Shortened Link
   .error-message-box(v-if="Object.entries(errorMessages).length")
     .error-message-box__close-button(v-on:click="dismissTab($event)") &times;
     .error-message-box__message The following issues occurred when analyzing the following repositories:
@@ -129,6 +131,7 @@
 
 <script>
 import { mapState } from 'vuex';
+import axios from 'axios';
 
 import cSummaryCharts from '../components/c-summary-charts.vue';
 import getNonRepeatingColor from '../utils/ramp-colour-generator';
@@ -723,6 +726,27 @@ export default {
       this.getFiltered();
     },
 
+    // generate shortened url //
+    async copyShortenedUrl() {
+      try {
+        // Note: this is just for a proof of concept, for actual production env variables should be used
+        const CUTTLY_URL = 'https://cutt.ly/api/api.php?';
+        const ENV_KEY = 'e9fd41863dc35a270f1c3b8595151e40831c3';
+        axios.get(CUTTLY_URL, {
+          params: { key: ENV_KEY, short: window.location.href },
+        })
+            .then(async (response) => {
+              if (response.data) {
+                const shortenedUrl = response.data.url.shortLink;
+                await navigator.clipboard.writeText(shortenedUrl);
+                alert(`Copied shortened url: ${shortenedUrl}`);
+              }
+            });
+      } catch (e) {
+        alert('Error copying shortened Url');
+        console.log(e);
+      }
+    },
     updateTmpFilterSinceDate(event) {
       const since = event.target.value;
       this.hasModifiedSinceDate = true;
