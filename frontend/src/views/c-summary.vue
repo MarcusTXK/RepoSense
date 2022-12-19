@@ -726,7 +726,7 @@ export default {
       this.getFiltered();
     },
 
-    // generate shortened url //
+    // generate shortened url
     async copyShortenedUrl() {
       try {
         // Note: this is just for a proof of concept, for actual production env variables should be used
@@ -747,7 +747,6 @@ export default {
             });
       } catch (e) {
         alert('Error copying shortened Url');
-        console.log(e);
       }
     },
     updateTmpFilterSinceDate(event) {
