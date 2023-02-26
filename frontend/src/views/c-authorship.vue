@@ -5,9 +5,9 @@
   .toolbar--multiline
     a(
       v-if="activeFilesCount < selectedFiles.length",
-      v-on:click="expandAll()"
+      v-on:click="toggleAllFileActiveProperty(true)"
     ) show all file details
-    a(v-if="activeFilesCount > 0", v-on:click="collapseAll()") hide all file details
+    a(v-if="activeFilesCount > 0", v-on:click="toggleAllFileActiveProperty(false)") hide all file details
   .panel-heading
     a.group-name(
       v-bind:href="info.location", target="_blank",
@@ -21,7 +21,7 @@
       span {{ info.minDate }} to {{ info.maxDate }}
         |&nbsp;&nbsp; ({{ selectedFiles.length }} files changed)
   .title
-    .contribution(v-if="isLoaded && files.length!=0")
+    .contribution(v-if="isLoaded && info.files.length!=0")
       .sorting.mui-form--inline
         .mui-select.sort-by
           select(v-model="filesSortType")
@@ -61,7 +61,7 @@
           v-model="filterType",
           v-on:change="indicateCheckBoxes"
         )
-        .checkboxes.mui-form--inline(v-if="files.length > 0")
+        .checkboxes.mui-form--inline(v-if="info.files.length > 0")
           label(style='background-color: #000000; color: #ffffff')
             input.mui-checkbox--fileType#all(type="checkbox", v-model="isSelectAllChecked")
             span(v-bind:title="getTotalFileBlankLineInfo()")
@@ -85,20 +85,20 @@
           label.binary-fileType(v-if="binaryFilesCount > 0")
             input.mui-checkbox--fileType(type="checkbox", v-model="isBinaryChecked")
             span(
-              v-bind:title="binaryFilesCount + \
-              ' binary files (not included in total line count)'"
+              v-bind:title="`${binaryFilesCount} \
+              binary files (not included in total line count)`"
             )
               span {{ binaryFilesCount }} binary file(s)
           label.ignored-fileType(v-if="ignoredFilesCount > 0")
             input.mui-checkbox--fileType(type="checkbox", v-model="isIgnoredChecked")
             span(
-              v-bind:title="ignoredFilesCount + \
-              ' ignored files (included in total line count)'"
+              v-bind:title="`${ignoredFilesCount} \
+              ignored files (included in total line count)`"
             )
               span {{ ignoredFilesCount }} ignored file(s)
 
   .files(v-if="isLoaded")
-    .empty(v-if="files.length === 0") nothing to see here :(
+    .empty(v-if="info.files.length === 0") nothing to see here :(
     template(v-for="(file, i) in selectedFiles", v-bind:key="file.path")
       .file
         .title
@@ -166,8 +166,9 @@
 <script>
 import { mapState } from 'vuex';
 import minimatch from 'minimatch';
-import brokenLinkDisabler from '../mixin/brokenLinkMixin.ts';
+import brokenLinkDisabler from '../mixin/brokenLinkMixin';
 import cSegmentCollection from '../components/c-segment-collection.vue';
+import Segment from '../utils/segment';
 
 const getFontColor = window.getFontColor;
 
@@ -181,7 +182,6 @@ const filesSortDict = {
 function authorshipInitialState() {
   return {
     isLoaded: false,
-    files: [],
     selectedFiles: [],
     filterType: 'checkboxes',
     selectedFileTypes: [],
@@ -201,15 +201,104 @@ const repoCache = [];
 
 export default {
   name: 'c-authorship',
-  mixins: [brokenLinkDisabler],
   components: {
     cSegmentCollection,
   },
+  mixins: [brokenLinkDisabler],
   emits: [
-      'deactivate-tab',
+    'deactivate-tab',
   ],
   data() {
     return authorshipInitialState();
+  },
+
+  computed: {
+    sortingFunction() {
+      return (a, b) => (this.toReverseSortFiles ? -1 : 1)
+        * window.comparator(filesSortDict[this.filesSortType])(a, b);
+    },
+
+    isSelectAllChecked: {
+      get() {
+        return this.selectedFileTypes.length === this.fileTypes.length;
+      },
+      set(value) {
+        if (value) {
+          this.selectedFileTypes = this.fileTypes.slice();
+        } else {
+          this.selectedFileTypes = [];
+        }
+
+        this.indicateCheckBoxes();
+      },
+    },
+
+    isBinaryChecked: {
+      get() {
+        return this.isBinaryFilesChecked;
+      },
+      set(value) {
+        if (value) {
+          this.isBinaryFilesChecked = true;
+        } else {
+          this.isBinaryFilesChecked = false;
+        }
+
+        this.updateSelectedFiles();
+        this.indicateCheckBoxes();
+      },
+    },
+
+    isIgnoredChecked: {
+      get() {
+        return this.isIgnoredFilesChecked;
+      },
+      set(value) {
+        if (value) {
+          this.isIgnoredFilesChecked = true;
+        } else {
+          this.isIgnoredFilesChecked = false;
+        }
+
+        this.updateSelectedFiles();
+        this.indicateCheckBoxes();
+      },
+    },
+
+    activeFilesCount() {
+      return this.selectedFiles.filter((file) => file.active).length;
+    },
+
+    totalLineCount() {
+      return Object.values(this.fileTypeLinesObj).reduce((acc, val) => acc + val, 0);
+    },
+
+    totalBlankLineCount() {
+      return Object.values(this.fileTypeBlankLinesObj).reduce((acc, val) => acc + val, 0);
+    },
+
+    fileTypeLinesObj() {
+      const numLinesModified = {};
+      Object.entries(this.filesLinesObj)
+        .filter(([, value]) => value > 0)
+        .forEach(([langType, value]) => {
+          numLinesModified[langType] = value;
+        });
+      return numLinesModified;
+    },
+
+    binaryFilesCount() {
+      return this.info.files.filter((file) => file.isBinary).length;
+    },
+
+    ignoredFilesCount() {
+      return this.info.files.filter((file) => file.isIgnored).length;
+    },
+
+    ...mapState({
+      fileTypeColors: 'fileTypeColors',
+      info: 'tabAuthorshipInfo',
+    }),
   },
 
   watch: {
@@ -242,6 +331,14 @@ export default {
     },
   },
 
+  created() {
+    this.initiate();
+  },
+
+  beforeUnmount() {
+    this.removeAuthorshipHashes();
+  },
+
   methods: {
     retrieveHashes() {
       const hash = window.hashParams;
@@ -260,8 +357,8 @@ export default {
 
       if (hash.authorshipFileTypes) {
         this.selectedFileTypes = hash.authorshipFileTypes
-            .split(window.HASH_DELIMITER)
-            .filter((fileType) => this.fileTypes.includes(fileType));
+          .split(window.HASH_DELIMITER)
+          .filter((fileType) => this.fileTypes.includes(fileType));
       } else {
         this.resetSelectedFileTypes();
       }
@@ -327,7 +424,12 @@ export default {
       if (!files) {
         files = await window.api.loadAuthorship(this.info.repo);
       }
-      this.getRepoProps(repo);
+
+      const author = repo.users.find((user) => user.name === this.info.author);
+      if (author) {
+        this.authorDisplayName = author.displayName;
+      }
+
       this.processFiles(files);
 
       if (this.info.isRefresh) {
@@ -339,50 +441,12 @@ export default {
       this.setInfoHash();
     },
 
-    getRepoProps(repo) {
-      if (repo) {
-        let files = [];
-        if (this.info.isMergeGroup) {
-          files = repo.files;
-        } else {
-          const author = repo.users.find((user) => user.name === this.info.author);
-          if (author) {
-            this.authorDisplayName = author.displayName;
-            files = repo.files.filter((f) => !!f.authorContributionMap[author.name]);
-          }
-        }
-        this.updateTotalFileTypeContribution(files);
-      }
-    },
-
-    updateTotalFileTypeContribution(files) {
-      files.filter((f) => !f.isIgnored).forEach((f) => {
-        const lines = f.lines ? f.lines.length : 0;
-        const type = f.fileType;
-        if (this.filesLinesObj[type]) {
-          this.filesLinesObj[type] += lines;
-        } else {
-          this.filesLinesObj[type] = lines;
-        }
-      });
-    },
-
-    expandAll() {
-      this.selectedFiles.forEach((file) => {
-        file.active = true;
-        file.wasCodeLoaded = true;
-      });
-    },
-
-    collapseAll() {
-      this.selectedFiles.forEach((file) => {
-        file.active = false;
-      });
+    toggleAllFileActiveProperty(isActive) {
+      this.$store.commit('setAllAuthorshipFileActiveProperty', { isActive, files: this.selectedFiles });
     },
 
     toggleFileActiveProperty(file) {
-      file.active = !file.active;
-      file.wasCodeLoaded = file.wasCodeLoaded || file.active;
+      this.$store.commit('toggleAuthorshipFileActiveProperty', file);
     },
 
     isUnknownAuthor(name) {
@@ -416,11 +480,11 @@ export default {
         const authored = (line.author && isAuthorMatched);
 
         if (authored !== lastState || lastId === -1) {
-          segments.push({
+          segments.push(new Segment(
             authored,
-            lines: [],
-            lineNumbers: [],
-          });
+            [],
+            [],
+          ));
 
           lastId += 1;
           lastState = authored;
@@ -465,10 +529,16 @@ export default {
         out.isIgnored = !!file.isIgnored;
         out.isBinary = !!file.isBinary;
 
+        if (this.filesLinesObj[out.fileType]) {
+          this.filesLinesObj[out.fileType] += lineCnt;
+        } else {
+          this.filesLinesObj[out.fileType] = lineCnt;
+        }
+
         if (!out.isBinary && !out.isIgnored) {
           out.charCount = file.lines.reduce(
-              (count, line) => count + (line ? line.content.length : 0),
-              0,
+            (count, line) => count + (line ? line.content.length : 0),
+            0,
           );
         }
 
@@ -498,14 +568,14 @@ export default {
       });
 
       this.fileTypeBlankLinesObj = fileTypeBlanksInfoObj;
-      this.files = res;
+      this.$store.commit('updateTabAuthorshipFiles', res);
       this.updateSelectedFiles(true);
     },
 
     isValidFile(file) {
       return this.info.isMergeGroup
           ? Object.entries(file.authorContributionMap)
-              .some((authorCount) => !this.isUnknownAuthor(authorCount[0]))
+            .some((authorCount) => !this.isUnknownAuthor(authorCount[0]))
           : this.info.author in file.authorContributionMap;
     },
 
@@ -547,12 +617,12 @@ export default {
 
     async updateSelectedFiles(setIsLoaded = false) {
       await this.$store.dispatch('incrementLoadingOverlayCountForceReload', 1);
-      this.selectedFiles = this.files.filter(
-          (file) => ((this.selectedFileTypes.includes(file.fileType) && !file.isBinary && !file.isIgnored)
+      this.selectedFiles = this.info.files.filter(
+        (file) => ((this.selectedFileTypes.includes(file.fileType) && !file.isBinary && !file.isIgnored)
           || (file.isBinary && this.isBinaryFilesChecked) || (file.isIgnored && this.isIgnoredFilesChecked))
           && minimatch(file.path, this.searchBarValue || '*', { matchBase: true, dot: true }),
       )
-          .sort(this.sortingFunction);
+        .sort(this.sortingFunction);
       if (setIsLoaded) {
         this.isLoaded = true;
       }
@@ -628,103 +698,6 @@ export default {
     },
 
     getFontColor,
-  },
-
-  computed: {
-    sortingFunction() {
-      return (a, b) => (this.toReverseSortFiles ? -1 : 1)
-        * window.comparator(filesSortDict[this.filesSortType])(a, b);
-    },
-
-    isSelectAllChecked: {
-      get() {
-        return this.selectedFileTypes.length === this.fileTypes.length;
-      },
-      set(value) {
-        if (value) {
-          this.selectedFileTypes = this.fileTypes.slice();
-        } else {
-          this.selectedFileTypes = [];
-        }
-
-        this.indicateCheckBoxes();
-      },
-    },
-
-    isBinaryChecked: {
-      get() {
-        return this.isBinaryFilesChecked;
-      },
-      set(value) {
-        if (value) {
-          this.isBinaryFilesChecked = true;
-        } else {
-          this.isBinaryFilesChecked = false;
-        }
-
-        this.updateSelectedFiles();
-        this.indicateCheckBoxes();
-      },
-    },
-
-    isIgnoredChecked: {
-      get() {
-        return this.isIgnoredFilesChecked;
-      },
-      set(value) {
-        if (value) {
-          this.isIgnoredFilesChecked = true;
-        } else {
-          this.isIgnoredFilesChecked = false;
-        }
-
-        this.updateSelectedFiles();
-        this.indicateCheckBoxes();
-      },
-    },
-
-    activeFilesCount() {
-      return this.selectedFiles.filter((file) => file.active).length;
-    },
-
-    totalLineCount() {
-      return Object.values(this.fileTypeLinesObj).reduce((acc, val) => acc + val, 0);
-    },
-
-    totalBlankLineCount() {
-      return Object.values(this.fileTypeBlankLinesObj).reduce((acc, val) => acc + val, 0);
-    },
-
-    fileTypeLinesObj() {
-      const numLinesModified = {};
-      Object.entries(this.filesLinesObj)
-          .filter(([, value]) => value > 0)
-          .forEach(([langType, value]) => {
-            numLinesModified[langType] = value;
-          });
-      return numLinesModified;
-    },
-
-    binaryFilesCount() {
-      return this.files.filter((file) => file.isBinary).length;
-    },
-
-    ignoredFilesCount() {
-      return this.files.filter((file) => file.isIgnored).length;
-    },
-
-    ...mapState({
-      fileTypeColors: 'fileTypeColors',
-      info: 'tabAuthorshipInfo',
-    }),
-  },
-
-  created() {
-    this.initiate();
-  },
-
-  beforeUnmount() {
-    this.removeAuthorshipHashes();
   },
 };
 </script>

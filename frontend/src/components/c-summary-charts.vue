@@ -164,38 +164,89 @@
           )
             .summary-chart__contrib--bar(
               v-for="width in widths",
-              v-bind:style="{ width: width + '%',\
+              v-bind:style="{ width: `${width}%`,\
                 'background-color': fileTypeColors[fileType] }",
-              v-bind:title="fileType + ': ' + user.fileTypeContribution[fileType] + ' lines, '\
-                + 'total: ' + user.checkedFileTypeContribution + ' lines ' + '(contribution from ' + minDate + ' to '\
-                + maxDate + ')'"
+              v-bind:title="`${fileType}: ${user.fileTypeContribution[fileType]} lines, \
+                total: ${user.checkedFileTypeContribution} lines (contribution from ${minDate} to \
+                ${maxDate})`"
             )
         template(v-else)
           .summary-chart__contrib(
-            v-bind:title="'Total contribution from ' + minDate + ' to ' + maxDate + ': '\
-              + user.checkedFileTypeContribution + ' lines'"
+            v-bind:title="`Total contribution from ${minDate} to ${maxDate}: \
+              ${user.checkedFileTypeContribution} lines`"
           )
             .summary-chart__contrib--bar(
               v-for="width in getContributionBars(user.checkedFileTypeContribution)",
-              v-bind:style="{ width: width+'%' }"
+              v-bind:style="{ width: `${width}%` }"
             )
 </template>
 
 <script>
 import { mapState } from 'vuex';
 
-import brokenLinkDisabler from '../mixin/brokenLinkMixin.ts';
+import brokenLinkDisabler from '../mixin/brokenLinkMixin';
 import cRamp from './c-ramp.vue';
 
 export default {
   name: 'c-summary-charts',
-  mixins: [brokenLinkDisabler],
   components: {
     cRamp,
   },
-  props: ['checkedFileTypes', 'filtered', 'avgContributionSize', 'filterBreakdown',
-      'filterGroupSelection', 'filterTimeFrame', 'filterSinceDate', 'filterUntilDate', 'isMergeGroup',
-      'minDate', 'maxDate', 'filterSearch', 'sortGroupSelection'],
+  mixins: [brokenLinkDisabler],
+  props: {
+    checkedFileTypes: {
+      type: Array,
+      required: true,
+    },
+    filtered: {
+      type: Array,
+      required: true,
+    },
+    avgContributionSize: {
+      type: Number,
+      required: true,
+    },
+    filterBreakdown: {
+      type: Boolean,
+      default: false,
+    },
+    filterGroupSelection: {
+      type: String,
+      default: 'groupByRepos',
+    },
+    filterTimeFrame: {
+      type: String,
+      default: 'commit',
+    },
+    filterSinceDate: {
+      type: String,
+      required: true,
+    },
+    filterUntilDate: {
+      type: String,
+      required: true,
+    },
+    isMergeGroup: {
+      type: Boolean,
+      default: false,
+    },
+    minDate: {
+      type: String,
+      required: true,
+    },
+    maxDate: {
+      type: String,
+      required: true,
+    },
+    filterSearch: {
+      type: String,
+      default: '',
+    },
+    sortGroupSelection: {
+      type: String,
+      default: 'groupTitle',
+    },
+  },
   data() {
     return {
       drags: [],
@@ -236,6 +287,9 @@ export default {
       }
     },
   },
+  created() {
+    this.retrieveSelectedTabHash();
+  },
   methods: {
     getFileTypeContributionBars(fileTypeContribution) {
       let currentBarWidth = 0;
@@ -244,34 +298,34 @@ export default {
       const allFileTypesContributionBars = {};
 
       Object.keys(fileTypeContribution)
-          .filter((fileType) => this.checkedFileTypes.includes(fileType))
-          .forEach((fileType) => {
-            const contribution = fileTypeContribution[fileType];
-            let barWidth = (contribution / contributionPerFullBar) * fullBarWidth;
-            const contributionBars = [];
+        .filter((fileType) => this.checkedFileTypes.includes(fileType))
+        .forEach((fileType) => {
+          const contribution = fileTypeContribution[fileType];
+          let barWidth = (contribution / contributionPerFullBar) * fullBarWidth;
+          const contributionBars = [];
 
-            // if contribution bar for file type is able to fit on the current line
-            if (currentBarWidth + barWidth < fullBarWidth) {
-              contributionBars.push(barWidth);
-              currentBarWidth += barWidth;
-            } else {
-              // take up all the space left on the current line
-              contributionBars.push(fullBarWidth - currentBarWidth);
-              barWidth -= fullBarWidth - currentBarWidth;
-              // additional bar width will start on a new line
-              const numOfFullBars = Math.floor(barWidth / fullBarWidth);
-              for (let i = 0; i < numOfFullBars; i += 1) {
-                contributionBars.push(fullBarWidth);
-              }
-              const remainingBarWidth = barWidth % fullBarWidth;
-              if (remainingBarWidth !== 0) {
-                contributionBars.push(remainingBarWidth);
-              }
-              currentBarWidth = remainingBarWidth;
+          // if contribution bar for file type is able to fit on the current line
+          if (currentBarWidth + barWidth < fullBarWidth) {
+            contributionBars.push(barWidth);
+            currentBarWidth += barWidth;
+          } else {
+            // take up all the space left on the current line
+            contributionBars.push(fullBarWidth - currentBarWidth);
+            barWidth -= fullBarWidth - currentBarWidth;
+            // additional bar width will start on a new line
+            const numOfFullBars = Math.floor(barWidth / fullBarWidth);
+            for (let i = 0; i < numOfFullBars; i += 1) {
+              contributionBars.push(fullBarWidth);
             }
+            const remainingBarWidth = barWidth % fullBarWidth;
+            if (remainingBarWidth !== 0) {
+              contributionBars.push(remainingBarWidth);
+            }
+            currentBarWidth = remainingBarWidth;
+          }
 
-            allFileTypesContributionBars[fileType] = contributionBars;
-          });
+          allFileTypesContributionBars[fileType] = contributionBars;
+        });
 
       return allFileTypesContributionBars;
     },
@@ -366,6 +420,7 @@ export default {
         name: user.displayName,
         isMergeGroup: isMerged,
         location: this.getRepoLink(repo[index]),
+        files: [],
       };
       this.addSelectedTab(user.name, user.repoName, 'authorship', isMerged);
       this.$store.commit('updateTabAuthorshipInfo', info);
@@ -397,7 +452,8 @@ export default {
       const {
         avgCommitSize, filterGroupSelection, filterTimeFrame, filterSearch,
       } = this;
-      const clonedUser = Object.assign({}, user); // so that changes in summary won't affect zoom
+      // Deep copy to ensure changes in zoom (e.g. toggle state) won't affect summary, and vice versa
+      const clonedUser = JSON.parse(JSON.stringify(user));
       const info = {
         zRepo: user.repoName,
         zAuthor: user.name,
@@ -575,9 +631,6 @@ export default {
       return explanation;
     },
 
-  },
-  created() {
-    this.retrieveSelectedTabHash();
   },
 };
 </script>

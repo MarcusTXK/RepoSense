@@ -98,7 +98,7 @@
         .within-border {{ slice.messageTitle.substr(0, 50) }}
         .not-within-border(v-if="slice.messageTitle.length > 50")
           |{{ slice.messageTitle.substr(50) }}
-      span &nbsp; ({{ slice.insertions }} lines) &nbsp;
+      span &nbsp; (+{{ slice.insertions }} -{{ slice.deletions }} lines) &nbsp;
       .hash
         span {{ slice.hash.substr(0, 7) }}
       span.fileTypeLabel(
@@ -121,13 +121,12 @@
           span &nbsp;{{ tag }}
       a(
         v-if="slice.messageBody !== ''",
-        v-on:click="updateExpandedCommitMessagesCount",
-        onclick="toggleNext(this)"
+        v-on:click="toggleSelectedCommitMessageBody(slice)"
       )
         .tooltip
           font-awesome-icon.commit-message--button(icon="ellipsis-h")
           span.tooltip-text Click to show/hide the commit message body
-      .body(v-if="slice.messageBody !== ''")
+      .body(v-if="slice.messageBody !== ''", v-show="slice.isOpen")
         pre {{ slice.messageBody }}
           .dashed-border
 </template>
@@ -135,8 +134,9 @@
 <script>
 import { mapState } from 'vuex';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import brokenLinkDisabler from '../mixin/brokenLinkMixin.ts';
+import brokenLinkDisabler from '../mixin/brokenLinkMixin';
 import cRamp from '../components/c-ramp.vue';
+import User from '../utils/user';
 
 const getFontColor = window.getFontColor;
 
@@ -153,14 +153,13 @@ function zoomInitialState() {
 
 export default {
   name: 'c-zoom',
-  mixins: [brokenLinkDisabler],
   components: {
     FontAwesomeIcon,
     cRamp,
   },
+  mixins: [brokenLinkDisabler],
   data() {
     return {
-      expandedCommitMessagesCount: this.totalCommitMessageBodyCount,
       ...zoomInitialState(),
     };
   },
@@ -182,10 +181,10 @@ export default {
 
       const date = zTimeFrame === 'week' ? 'endDate' : 'date';
       filteredUser.commits = zUser.commits.filter(
-          (commit) => commit[date] >= zSince && commit[date] <= zUntil,
+        (commit) => commit[date] >= zSince && commit[date] <= zUntil,
       ).sort(this.sortingFunction);
 
-      return filteredUser;
+      return new User(filteredUser);
     },
     selectedCommits() {
       const commits = [];
@@ -194,7 +193,7 @@ export default {
         filteredCommit.commitResults = [];
         commit.commitResults.forEach((slice) => {
           if (Object.keys(slice.fileTypesAndContributionMap).some(
-              (fileType) => this.selectedFileTypes.indexOf(fileType) !== -1,
+            (fileType) => this.selectedFileTypes.indexOf(fileType) !== -1,
           )) {
             filteredCommit.commitResults.push(slice);
           }
@@ -216,6 +215,11 @@ export default {
       });
 
       return nonEmptyCommitMessageCount;
+    },
+    expandedCommitMessagesCount() {
+      return this.selectedCommits.reduce((prev, commit) => (
+        prev + commit.commitResults.filter((slice) => slice.isOpen).length
+      ), 0);
     },
     isSelectAllChecked: {
       get() {
@@ -240,20 +244,11 @@ export default {
   watch: {
     info() {
       const newData = {
-        expandedCommitMessagesCount: this.totalCommitMessageBodyCount,
         ...zoomInitialState(),
       };
       Object.assign(this.$data, newData);
       this.initiate();
       this.setInfoHash();
-    },
-    selectedFileTypes: {
-      deep: true,
-      handler() {
-        this.$nextTick(() => {
-          this.updateExpandedCommitMessagesCount();
-        });
-      },
     },
     commitsSortType() {
       window.addHash('zCST', this.commitsSortType);
@@ -263,6 +258,14 @@ export default {
       window.addHash('zRSC', this.toReverseSortedCommits);
       window.encodeHash();
     },
+  },
+  created() {
+    this.initiate();
+    this.retrieveHashes();
+    this.setInfoHash();
+  },
+  beforeUnmount() {
+    this.removeZoomHashes();
   },
 
   methods: {
@@ -296,7 +299,7 @@ export default {
         });
       });
       this.fileTypes = Object.keys(this.filteredUser.fileTypeContribution).filter(
-          (fileType) => commitsFileTypes.has(fileType),
+        (fileType) => commitsFileTypes.has(fileType),
       );
     },
 
@@ -320,8 +323,8 @@ export default {
 
       if (hash.zFT) {
         this.selectedFileTypes = hash.zFT
-            .split(window.HASH_DELIMITER)
-            .filter((fileType) => this.fileTypes.includes(fileType));
+          .split(window.HASH_DELIMITER)
+          .filter((fileType) => this.fileTypes.includes(fileType));
       }
     },
 
@@ -353,24 +356,16 @@ export default {
       encodeHash();
     },
 
-    toggleAllCommitMessagesBody(isActive) {
-      this.showAllCommitMessageBody = isActive;
-
-      const toRename = this.showAllCommitMessageBody
-        ? 'commit-message message-body active'
-        : 'commit-message message-body';
-
-      const commitMessageClasses = document.getElementsByClassName('commit-message message-body');
-      Array.from(commitMessageClasses).forEach((commitMessageClass) => {
-        commitMessageClass.className = toRename;
-      });
-
-      this.expandedCommitMessagesCount = isActive ? this.totalCommitMessageBodyCount : 0;
+    toggleSelectedCommitMessageBody(slice) {
+      this.$store.commit('toggleZoomCommitMessageBody', slice);
     },
 
-    updateExpandedCommitMessagesCount() {
-      this.expandedCommitMessagesCount = document.getElementsByClassName('commit-message message-body active')
-          .length;
+    toggleAllCommitMessagesBody(isOpen) {
+      this.showAllCommitMessageBody = isOpen;
+      this.$store.commit('setAllZoomCommitMessageBody', {
+        isOpen,
+        commits: this.selectedCommits,
+      });
     },
 
     removeZoomHashes() {
@@ -399,14 +394,6 @@ export default {
     },
 
     getFontColor,
-  },
-  created() {
-    this.initiate();
-    this.retrieveHashes();
-    this.setInfoHash();
-  },
-  beforeUnmount() {
-    this.removeZoomHashes();
   },
 };
 

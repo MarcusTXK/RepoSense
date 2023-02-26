@@ -2,47 +2,86 @@
 .ramp
   template(v-if="tframe === 'commit'")
     template(v-for="(slice, j) in user.commits")
-      template(v-for="(commit, k) in slice.commitResults.filter(commitResult => commitResult.insertions > 0)")
+      template(v-for="(commit, k) in slice.commitResults.filter(commitResult => getContributions(commitResult) > 0)")
         a.ramp__slice(
           draggable="false",
           v-on:click="rampClick",
           v-bind:href="getLink(commit)", target="_blank",
           v-bind:title="getContributionMessage(slice, commit)",
-          v-bind:class="'ramp__slice--color' + getSliceColor(slice.date),\
+          v-bind:class="`ramp__slice--color${getRampColor(commit, slice)}`,\
             !isBrokenLink(getLink(commit)) ? '' : 'broken-link'",
           v-bind:style="{\
             zIndex: user.commits.length - j,\
-            borderLeftWidth: getWidth(commit) + 'em',\
-            right: ((getSlicePos(slice.date)\
-              + (getCommitPos(k, slice.commitResults.length))) * 100) + '%'\
+            borderLeftWidth: `${getWidth(commit)}em`,\
+            right: `${((getSlicePos(slice.date)\
+              + (getCommitPos(k, slice.commitResults.length))) * 100)}%`\
             }"
         )
 
   template(v-else)
     a.ramp__slice(
       draggable="false",
-      v-for="(slice, j) in user.commits.filter(commit => commit.insertions > 0)",
+      v-for="(slice, j) in user.commits.filter(commit => getContributions(commit) > 0)",
       v-bind:title="getContributionMessage(slice)",
       v-on:click="openTabZoom(user, slice, $event)",
-      v-bind:class="'ramp__slice--color' + getSliceColor(slice.date)",
+      v-bind:class="`ramp__slice--color${getSliceColor(slice)}`",
       v-bind:style="{\
         zIndex: user.commits.length - j,\
-        borderLeftWidth: getWidth(slice) + 'em',\
-        right: (getSlicePos(tframe === 'day' ? slice.date : slice.endDate) * 100) + '%' \
+        borderLeftWidth: `${getWidth(slice)}em`,\
+        right: `${(getSlicePos(tframe === 'day' ? slice.date : slice.endDate) * 100)}%` \
         }"
     )
 </template>
 
 <script>
-import brokenLinkDisabler from '../mixin/brokenLinkMixin.ts';
+import brokenLinkDisabler from '../mixin/brokenLinkMixin';
+import User from '../utils/user';
 
 export default {
-  mixins: [brokenLinkDisabler],
   name: 'c-ramp',
-  props: ['groupby', 'user', 'tframe', 'avgsize', 'sdate', 'udate', 'mergegroup', 'fromramp', 'filtersearch'],
+  mixins: [brokenLinkDisabler],
+  props: {
+    groupby: {
+      type: String,
+      default: 'groupByRepos',
+    },
+    user: {
+      type: User,
+      required: true,
+    },
+    tframe: {
+      type: String,
+      default: 'commit',
+    },
+    avgsize: {
+      type: [Number, String],
+      required: true,
+    },
+    sdate: {
+      type: String,
+      required: true,
+    },
+    udate: {
+      type: String,
+      required: true,
+    },
+    mergegroup: {
+      type: Boolean,
+      default: false,
+    },
+    fromramp: {
+      type: Boolean,
+      default: false,
+    },
+    filtersearch: {
+      type: String,
+      default: '',
+    },
+  },
   data() {
     return {
       rampSize: 0.01,
+      deletesContributionRampSize: this.rampSize * 20,
     };
   },
 
@@ -50,10 +89,18 @@ export default {
     getLink(commit) {
       return window.getCommitLink(commit.repoId, commit.hash);
     },
-
+    getContributions(commit) {
+      return commit.insertions + commit.deletions;
+    },
+    isDeletesContribution(commit) {
+      return commit.insertions === 0 && commit.deletions > 0;
+    },
     getWidth(slice) {
-      if (slice.insertions === 0) {
+      if (this.getContributions(slice) === 0) {
         return 0;
+      }
+      if (this.isDeletesContribution(slice)) {
+        return this.deletesContributionRampSize;
       }
 
       const newSize = 100 * (slice.insertions / this.avgsize);
@@ -62,13 +109,13 @@ export default {
     getContributionMessage(slice, commit) {
       let title = '';
       if (this.tframe === 'commit') {
-        return `[${slice.date}] ${commit.messageTitle}: ${commit.insertions} lines`;
+        return `[${slice.date}] ${commit.messageTitle}: +${commit.insertions} -${commit.deletions} lines `;
       }
 
       title = this.tframe === 'day'
             ? `[${slice.date}] Daily `
             : `[${slice.date} till ${slice.endDate}] Weekly `;
-      title += `contribution: ${slice.insertions} lines`;
+      title += `contribution: +${slice.insertions} -${slice.deletions} lines`;
       return title;
     },
     openTabZoom(user, slice, evt) {
@@ -114,10 +161,19 @@ export default {
     getTotalForPos(sinceDate, untilDate) {
       return new Date(untilDate) - new Date(sinceDate);
     },
-    getSliceColor(date) {
+    getRampColor(commit, slice) {
+      if (this.isDeletesContribution(commit)) {
+        return '-deletes';
+      }
+      return this.getSliceColor(slice);
+    },
+    getSliceColor(slice) {
+      if (this.isDeletesContribution(slice)) {
+        return '-deletes';
+      }
       const timeMs = this.fromramp
           ? (new Date(this.sdate)).getTime()
-          : (new Date(date)).getTime();
+          : (new Date(slice.date)).getTime();
 
       return (timeMs / window.DAY_IN_MS) % 5;
     },
@@ -172,6 +228,10 @@ export default {
 
     &--color4 {
       border-bottom: $height rgba(mui-color('pink'), .5) solid;
+    }
+
+    &--color-deletes {
+      border-bottom: $height rgba(mui-color('red'), .7) solid;
     }
   }
 }

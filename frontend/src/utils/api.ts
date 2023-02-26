@@ -1,3 +1,9 @@
+import { DailyCommit, CommitResult } from '../types/types';
+import { authorshipSchema } from '../types/zod/authorship-type';
+import { commitsSchema } from '../types/zod/commits-type';
+import { ErrorMessage, summarySchema } from '../types/zod/summary-type';
+import User from './user';
+
 // utility functions //
 window.$ = (id) => document.getElementById(id);
 window.enquery = (key, val) => `${key}=${encodeURIComponent(val)}`;
@@ -16,9 +22,9 @@ const REPORT_DIR = '.';
 
 window.deactivateAllOverlays = function deactivateAllOverlays() {
   document.querySelectorAll('.summary-chart__ramp .overlay')
-      .forEach((x) => {
-        x.className = 'overlay';
-      });
+    .forEach((x) => {
+      x.className = 'overlay';
+    });
 };
 
 window.getDateStr = function getDateStr(date) {
@@ -28,7 +34,7 @@ window.getDateStr = function getDateStr(date) {
 window.getHexToRGB = function getHexToRGB(color) {
   // to convert color from hex code to rgb format
   const arr = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
-  return arr.slice(1).map((val) => parseInt(val, 16));
+  return arr ? arr.slice(1).map((val) => parseInt(val, 16)) : [];
 };
 
 window.getFontColor = function getFontColor(color) {
@@ -54,31 +60,31 @@ window.encodeHash = function encodeHash() {
   const { hashParams } = window;
 
   const hash = Object.keys(hashParams)
-      .map((key) => `${key}=${encodeURIComponent(hashParams[key])}`)
-      .join('&');
+    .map((key) => `${key}=${encodeURIComponent(hashParams[key])}`)
+    .join('&');
 
   const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}${HASH_ANCHOR}${hash}`;
   window.history.replaceState(null, '', newUrl);
 };
 
 window.decodeHash = function decodeHash() {
-  const hashParams = {};
+  const hashParams: { [key: string]: string } = {};
 
   const hashIndex = window.location.href.indexOf(HASH_ANCHOR);
   const parameterString = hashIndex === -1 ? '' : window.location.href.slice(hashIndex + 1);
 
   parameterString.split('&')
-      .forEach((param) => {
-        const [key, val] = param.split('=');
-        if (key) {
-          try {
-            hashParams[key] = decodeURIComponent(val);
-          } catch (error) {
-            this.userUpdated = false;
-            this.isLoading = false;
-          }
+    .forEach((param) => {
+      const [key, val] = param.split('=');
+      if (key) {
+        try {
+          hashParams[key] = decodeURIComponent(val);
+        } catch (error) {
+          (this as any).userUpdated = false;
+          (this as any).isLoading = false;
         }
-      });
+      }
+    });
   window.hashParams = hashParams;
 };
 
@@ -104,23 +110,6 @@ window.comparator = (fn, sortingOption = '') => function compare(a, b) {
   return 1;
 };
 
-window.toggleNext = function toggleNext(ele) {
-  // function for toggling unopened code
-  const targetClass = 'active';
-
-  const parent = ele.parentNode;
-  const classes = parent.className.split(' ');
-  const idx = classes.indexOf(targetClass);
-
-  if (idx === -1) {
-    classes.push(targetClass);
-  } else {
-    classes.splice(idx, 1);
-  }
-
-  parent.className = classes.join(' ');
-};
-
 window.filterUnsupported = function filterUnsupported(string) {
   // checks for a pre-defined unsupported tag
   return string.includes(window.UNSUPPORTED_INDICATOR) ? undefined : string;
@@ -128,15 +117,15 @@ window.filterUnsupported = function filterUnsupported(string) {
 
 window.getAuthorLink = function getAuthorLink(repoId, author) {
   const domainName = window.REPOS[repoId].location.domainName;
-  return window.filterUnsupported(window.DOMAIN_URL_MAP[domainName].BASE_URL + author);
+  return window.filterUnsupported(`${window.DOMAIN_URL_MAP[domainName].BASE_URL}${author}`);
 };
 
 window.getRepoLinkUnfiltered = function getRepoLink(repoId) {
   // abstraction for repo link construction. Not supposed to be used by other files
   const domainName = window.REPOS[repoId].location.domainName;
   return window.DOMAIN_URL_MAP[domainName].REPO_URL
-      .replace('$ORGANIZATION', window.REPOS[repoId].location.organization)
-      .replace('$REPO_NAME', window.REPOS[repoId].location.repoName);
+    .replace('$ORGANIZATION', window.REPOS[repoId].location.organization)
+    .replace('$REPO_NAME', window.REPOS[repoId].location.repoName);
 };
 
 window.getRepoLink = function getRepoLink(repoId) {
@@ -145,28 +134,31 @@ window.getRepoLink = function getRepoLink(repoId) {
 
 window.getBranchLink = function getBranchLink(repoId, branch) {
   const domainName = window.REPOS[repoId].location.domainName;
-  return window.filterUnsupported(window.getRepoLinkUnfiltered(repoId) + window.DOMAIN_URL_MAP[domainName].BRANCH
-      .replace('$BRANCH', branch));
+  return window.filterUnsupported(`${window.getRepoLinkUnfiltered(repoId)}${window.DOMAIN_URL_MAP[domainName].BRANCH}`
+    .replace('$BRANCH', branch));
 };
 
 window.getCommitLink = function getCommitLink(repoId, commitHash) {
   const domainName = window.REPOS[repoId].location.domainName;
-  return window.filterUnsupported(window.getRepoLinkUnfiltered(repoId) + window.DOMAIN_URL_MAP[domainName].COMMIT_PATH
-      .replace('$COMMIT_HASH', commitHash));
+  return window.filterUnsupported(`${window.getRepoLinkUnfiltered(repoId)}${window.DOMAIN_URL_MAP[domainName]
+    .COMMIT_PATH}`
+    .replace('$COMMIT_HASH', commitHash));
 };
 
 window.getBlameLink = function getBlameLink(repoId, branch, filepath) {
   const domainName = window.REPOS[repoId].location.domainName;
-  return window.filterUnsupported(window.getRepoLinkUnfiltered(repoId) + window.DOMAIN_URL_MAP[domainName].BLAME_PATH
-      .replace('$BRANCH', branch)
-      .replace('$FILE_PATH', filepath));
+  return window.filterUnsupported(`${window.getRepoLinkUnfiltered(repoId)}${window.DOMAIN_URL_MAP[domainName]
+    .BLAME_PATH}`
+    .replace('$BRANCH', branch)
+    .replace('$FILE_PATH', filepath));
 };
 
 window.getHistoryLink = function getHistoryLink(repoId, branch, filepath) {
   const domainName = window.REPOS[repoId].location.domainName;
-  return window.filterUnsupported(window.getRepoLinkUnfiltered(repoId) + window.DOMAIN_URL_MAP[domainName].HISTORY_PATH
-      .replace('$BRANCH', branch)
-      .replace('$FILE_PATH', filepath));
+  return window.filterUnsupported(`${window.getRepoLinkUnfiltered(repoId)}${window.DOMAIN_URL_MAP[domainName]
+    .HISTORY_PATH}`
+    .replace('$BRANCH', branch)
+    .replace('$FILE_PATH', filepath));
 };
 
 window.getGroupName = function getGroupName(group, filterGroupSelection) {
@@ -211,10 +203,11 @@ window.api = {
   },
   async loadSummary() {
     window.REPOS = {};
-    let data = {};
+    let data;
     try {
-      data = await this.loadJSON('summary.json');
-    } catch (error) {
+      const json = await this.loadJSON('summary.json');
+      data = summarySchema.parse(json);
+    } catch (error: any) {
       if (error.message === 'Unable to read summary.json.') {
         return null;
       }
@@ -228,14 +221,14 @@ window.api = {
     window.isUntilDateProvided = data.isUntilDateProvided;
     document.title = data.reportTitle || document.title;
 
-    const errorMessages = {};
+    const errorMessages: { [key: string]: ErrorMessage } = {};
     Object.entries(data.errorSet).forEach(([repoName, message]) => {
       errorMessages[repoName] = message;
     });
 
     window.DOMAIN_URL_MAP = data.supportedDomainUrlMap;
 
-    const names = [];
+    const names: string[] = [];
     data.repos.forEach((repo) => {
       const repoName = `${repo.displayName}`;
       window.REPOS[repoName] = repo;
@@ -251,33 +244,38 @@ window.api = {
 
   async loadCommits(repoName) {
     const folderName = window.REPOS[repoName].outputFolderName;
-    const commits = await this.loadJSON(`${folderName}/commits.json`);
-    const res = [];
+    const json = await this.loadJSON(`${folderName}/commits.json`);
+    const commits = commitsSchema.parse(json);
+
+    const res: User[] = [];
     const repo = window.REPOS[repoName];
 
     Object.keys(commits.authorDisplayNameMap).forEach((author) => {
       if (author) {
-        const obj = {
+        this.setContributionOfCommitResultsAndInsertRepoId(commits.authorDailyContributionsMap[author], repoName);
+
+        const searchParams = [
+          repo.displayName,
+          commits.authorDisplayNameMap[author],
+          author,
+        ];
+
+        // commits and checkedFileTypeContribution are set in c-summary
+        const user = new User({
           name: author,
           repoId: repoName,
           variance: commits.authorContributionVariance[author],
           displayName: commits.authorDisplayNameMap[author],
-          dailyCommits: commits.authorDailyContributionsMap[author],
+          commits: [],
+          dailyCommits: commits.authorDailyContributionsMap[author] as DailyCommit[],
           fileTypeContribution: commits.authorFileTypeContributionMap[author],
-        };
+          searchPath: searchParams.join('_').toLowerCase(),
+          repoName: `${repo.displayName}`,
+          location: `${repo.location.location}`,
+          checkedFileTypeContribution: 0,
+        });
 
-        this.setContributionOfCommitResultsAndInsertRepoId(obj.dailyCommits, obj.repoId);
-
-        const searchParams = [
-            repo.displayName,
-            obj.displayName, author,
-        ];
-
-        obj.searchPath = searchParams.join('_').toLowerCase();
-        obj.repoName = `${repo.displayName}`;
-        obj.location = `${repo.location.location}`;
-
-        res.push(obj);
+        res.push(user);
       }
     });
 
@@ -290,10 +288,11 @@ window.api = {
   loadAuthorship(repoName) {
     const folderName = window.REPOS[repoName].outputFolderName;
     return this.loadJSON(`${folderName}/authorship.json`)
-        .then((files) => {
-          window.REPOS[repoName].files = files;
-          return files;
-        });
+      .then((json) => {
+        const files = authorshipSchema.parse(json);
+        window.REPOS[repoName].files = files;
+        return files;
+      });
   },
 
   // calculate and set the contribution of each commitResult and insert repoId into commitResult,
@@ -301,11 +300,11 @@ window.api = {
   setContributionOfCommitResultsAndInsertRepoId(dailyCommits, repoId) {
     dailyCommits.forEach((commit) => {
       commit.commitResults.forEach((result) => {
-        result.repoId = repoId;
-        result.insertions = Object.values(result.fileTypesAndContributionMap)
-            .reduce((acc, fileType) => acc + fileType.insertions, 0);
-        result.deletions = Object.values(result.fileTypesAndContributionMap)
-            .reduce((acc, fileType) => acc + fileType.deletions, 0);
+        (result as CommitResult).repoId = repoId;
+        (result as CommitResult).insertions = Object.values(result.fileTypesAndContributionMap)
+          .reduce((acc, fileType) => acc + fileType.insertions, 0);
+        (result as CommitResult).deletions = Object.values(result.fileTypesAndContributionMap)
+          .reduce((acc, fileType) => acc + fileType.deletions, 0);
       });
     });
   },

@@ -145,7 +145,18 @@ export default {
   components: {
     cSummaryCharts,
   },
-  props: ['repos', 'errorMessages'],
+  props: {
+    repos: {
+      type: Array,
+      required: true,
+    },
+    errorMessages: {
+      type: Object,
+      default() {
+        return {};
+      },
+    },
+  },
   data() {
     return {
       checkedFileTypes: [],
@@ -172,38 +183,6 @@ export default {
       isSafariBrowser: /.*Version.*Safari.*/.test(navigator.userAgent),
       filterGroupSelectionWatcherFlag: false,
     };
-  },
-  watch: {
-
-    filterGroupSelection() {
-      // Deactivates watcher
-      if (!this.filterGroupSelectionWatcherFlag) {
-        return;
-      }
-      const { allGroupsMerged } = this;
-
-      this.$store.dispatch('incrementLoadingOverlayCountForceReload', 1).then(() => {
-        this.getFilteredRepos();
-        this.updateMergedGroup(allGroupsMerged);
-        this.$store.commit('incrementLoadingOverlayCount', -1);
-      });
-    },
-
-    '$store.state.summaryDates': function () {
-      this.hasModifiedSinceDate = true;
-      this.hasModifiedUntilDate = true;
-      this.tmpFilterSinceDate = this.$store.state.summaryDates.since;
-      this.tmpFilterUntilDate = this.$store.state.summaryDates.until;
-      window.deactivateAllOverlays();
-      this.getFiltered();
-    },
-
-    mergedGroups: {
-      deep: true,
-      handler() {
-        this.getFiltered();
-      },
-    },
   },
   computed: {
     checkAllFileTypes: {
@@ -276,6 +255,54 @@ export default {
 
     ...mapState(['mergedGroups']),
   },
+  watch: {
+
+    filterGroupSelection() {
+      // Deactivates watcher
+      if (!this.filterGroupSelectionWatcherFlag) {
+        return;
+      }
+      const { allGroupsMerged } = this;
+
+      this.$store.dispatch('incrementLoadingOverlayCountForceReload', 1).then(() => {
+        this.getFilteredRepos();
+        this.updateMergedGroup(allGroupsMerged);
+        this.$store.commit('incrementLoadingOverlayCount', -1);
+      });
+    },
+
+    '$store.state.summaryDates': function () {
+      this.hasModifiedSinceDate = true;
+      this.hasModifiedUntilDate = true;
+      this.tmpFilterSinceDate = this.$store.state.summaryDates.since;
+      this.tmpFilterUntilDate = this.$store.state.summaryDates.until;
+      window.deactivateAllOverlays();
+      this.getFiltered();
+    },
+
+    mergedGroups: {
+      deep: true,
+      handler() {
+        this.getFiltered();
+      },
+    },
+  },
+  created() {
+    this.processFileTypes();
+    this.renderFilterHash();
+    this.getFiltered();
+    if (this.$store.state.tabZoomInfo.isRefreshing) {
+      const zoomInfo = Object.assign({}, this.$store.state.tabZoomInfo);
+      this.restoreZoomFiltered(zoomInfo);
+    }
+  },
+  mounted() {
+    // Delay execution of filterGroupSelection watcher
+    // to prevent clearing of merged groups
+    setTimeout(() => {
+      this.filterGroupSelectionWatcherFlag = true;
+    }, 0);
+  },
   methods: {
     dismissTab(event) {
       event.target.parentNode.style.display = 'none';
@@ -297,7 +324,7 @@ export default {
     },
 
     getReportIssueTitle() {
-      return encodeURI('Unexpected error with RepoSense version ') + window.repoSenseVersion;
+      return `${encodeURI('Unexpected error with RepoSense version ')}${window.repoSenseVersion}`;
     },
 
     getReportIssueMessage(message) {
@@ -367,8 +394,8 @@ export default {
       if (hash.timeframe) { this.filterTimeFrame = hash.timeframe; }
       if (hash.mergegroup) {
         this.$store.commit(
-            'updateMergedGroup',
-            hash.mergegroup.split(window.HASH_DELIMITER),
+          'updateMergedGroup',
+          hash.mergegroup.split(window.HASH_DELIMITER),
         );
       }
       if (hash.since && dateFormatRegex.test(hash.since)) {
@@ -396,9 +423,9 @@ export default {
 
     isMatchSearchedUser(filterSearch, user) {
       return !filterSearch || filterSearch.toLowerCase()
-          .split(' ')
-          .filter(Boolean)
-          .some((param) => user.searchPath.includes(param));
+        .split(' ')
+        .filter(Boolean)
+        .some((param) => user.searchPath.includes(param));
     },
 
     toggleBreakdown() {
@@ -557,8 +584,8 @@ export default {
 
     processFileTypes() {
       const selectedColors = ['#ffe119', '#4363d8', '#3cb44b', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
-          '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1',
-          '#000075', '#808080'];
+        '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1',
+        '#000075', '#808080'];
       const fileTypeColors = {};
       let i = 0;
 
@@ -666,6 +693,11 @@ export default {
           this.filterCommitByCheckedFileTypes(filteredCommit);
 
           if (filteredCommit.commitResults.length > 0) {
+            filteredCommit.commitResults.forEach((commitResult) => {
+              if (commitResult.messageBody !== '') {
+                commitResult.isOpen = true;
+              }
+            });
             user.commits.push(filteredCommit);
           }
         }
@@ -688,11 +720,11 @@ export default {
 
     getFilteredFileTypes(commitResult) {
       return Object.keys(commitResult.fileTypesAndContributionMap)
-          .filter(this.isFileTypeChecked)
-          .reduce((obj, fileType) => {
-            obj[fileType] = commitResult.fileTypesAndContributionMap[fileType];
-            return obj;
-          }, {});
+        .filter(this.isFileTypeChecked)
+        .reduce((obj, fileType) => {
+          obj[fileType] = commitResult.fileTypesAndContributionMap[fileType];
+          return obj;
+        }, {});
     },
 
     isFileTypeChecked(fileType) {
@@ -704,9 +736,9 @@ export default {
 
     updateCommitResultWithFileTypes(commitResult, filteredFileTypes) {
       commitResult.insertions = Object.values(filteredFileTypes)
-          .reduce((acc, fileType) => acc + fileType.insertions, 0);
+        .reduce((acc, fileType) => acc + fileType.insertions, 0);
       commitResult.deletions = Object.values(filteredFileTypes)
-          .reduce((acc, fileType) => acc + fileType.deletions, 0);
+        .reduce((acc, fileType) => acc + fileType.deletions, 0);
       commitResult.fileTypesAndContributionMap = filteredFileTypes;
     },
 
@@ -859,22 +891,6 @@ export default {
     },
 
     getFontColor,
-  },
-  created() {
-    this.processFileTypes();
-    this.renderFilterHash();
-    this.getFiltered();
-    if (this.$store.state.tabZoomInfo.isRefreshing) {
-      const zoomInfo = Object.assign({}, this.$store.state.tabZoomInfo);
-      this.restoreZoomFiltered(zoomInfo);
-    }
-  },
-  mounted() {
-    // Delay execution of filterGroupSelection watcher
-    // to prevent clearing of merged groups
-    setTimeout(() => {
-      this.filterGroupSelectionWatcherFlag = true;
-    }, 0);
   },
 };
 </script>
