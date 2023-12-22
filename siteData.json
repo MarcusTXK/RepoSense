@@ -130,15 +130,17 @@
       "headings": {
         "html-report": "HTML report",
         "report-architecture": "Report architecture",
-        "javascript-and-vue-files": "Javascript and Vue files",
+        "typescript-and-vue-files": "Typescript and Vue files",
         "json-report-files": "JSON report files",
         "app-app-vue": "App (app.vue)",
         "loading-of-report-information": "Loading of report information",
         "activating-additional-view-modules": "Activating additional view modules",
         "hash-link": "Hash link",
-        "data-loader-api-js": "Data loader (api.js)",
+        "data-loader-api-ts": "Data loader (api.ts)",
         "loading-from-zip-file": "Loading from ZIP file",
         "retrieving-and-parsing-information": "Retrieving and parsing information",
+        "home-view-c-home-vue": "Home view (c-home.vue)",
+        "widget-view-c-widget-vue": "Widget view (c-widget.vue)",
         "summary-view-c-summary-vue": "Summary view (c-summary.vue)",
         "initializing-the-data-for-the-ramp-charts": "Initializing the data for the ramp charts",
         "filtering-users-and-repositories": "Filtering users and repositories",
@@ -294,6 +296,15 @@
       "headingKeywords": {}
     },
     {
+      "src": "ug/grantingWriteAccess.md",
+      "headings": {
+        "granting-write-access-to-a-repository": "Granting write-access to a repository",
+        "if-you-wish-to-use-personal-access-token": "If you wish to use personal access token:",
+        "if-you-wish-to-use-deploy-key": "If you wish to use deploy key:"
+      },
+      "headingKeywords": {}
+    },
+    {
       "src": "ug/index.md",
       "title": "User guide",
       "headings": {
@@ -306,7 +317,6 @@
     },
     {
       "src": "ug/runSh.md",
-      "title": "",
       "headings": {
         "appendix-run-sh-format": "Appendix: run.sh format",
         "customizing-the-reposense-command": "Customizing the RepoSense command",
@@ -320,7 +330,8 @@
       "headings": {
         "sharing-reports": "Sharing reports",
         "share-privately": "Share privately",
-        "publish-on-the-web": "Publish on the web"
+        "publish-on-the-web": "Publish on the web",
+        "embeddable-widgets": "Embeddable Widgets"
       },
       "headingKeywords": {}
     },
